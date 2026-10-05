@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS = {
     rpcShowAlbumArt: true,
     restoreOnPause: true,
     restoreOnStop: true,
+    fallbackStatus: "",
     enableLyricSendButton: true
 } as const;
 
@@ -280,6 +281,8 @@ function resetPluginDefaults() {
     Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
         (settings.store as Record<string, unknown>)[key] = value;
     });
+    previousStatusText = getFallbackStatus();
+    void DataStore.del(PREVIOUS_STATUS_KEY).catch(() => void 0);
 
     restartTimer();
     tick();
@@ -636,6 +639,11 @@ const settings = definePluginSettings({
         description: "Restore your previous status when Spotify is closed / no track instead of clearing.",
         default: DEFAULT_SETTINGS.restoreOnStop
     },
+    fallbackStatus: {
+        type: OptionType.STRING,
+        description: "Status to restore when paused/stopped if no previous status was saved. E.g. 15.",
+        default: DEFAULT_SETTINGS.fallbackStatus
+    },
     enableLyricSendButton: {
         type: OptionType.BOOLEAN,
         description: "Show a chat bar button to send synced lyric lines as messages. Toggle it to start/stop.",
@@ -853,16 +861,39 @@ function shouldRestoreOnStop() {
     return (settings.store as Record<string, unknown>).restoreOnStop !== false;
 }
 
+function isPluginGeneratedStatus(text: string) {
+    const value = cleanText(text);
+    if (!value) return true;
+    if (isWaitingStatus(value)) return true;
+    const loading = cleanText(settings.store.loadingText);
+    const noLyrics = cleanText(settings.store.noLyricsText);
+    const prefix = cleanText(settings.store.pausedPrefix);
+    if (loading && value === loading) return true;
+    if (noLyrics && value === noLyrics) return true;
+    if (prefix && value.startsWith(prefix)) return true;
+    return false;
+}
+
+function getFallbackStatus() {
+    return cleanText((settings.store as Record<string, unknown>).fallbackStatus ?? "");
+}
+
 async function loadPreviousStatus() {
     try {
-        const saved = await DataStore.get<string>(PREVIOUS_STATUS_KEY);
+        const saved = cleanText(await DataStore.get<string>(PREVIOUS_STATUS_KEY));
         const current = getCurrentCustomStatusText();
-        // If the user has a real status right now (e.g. "15"), keep it.
-        // Otherwise fall back to the last saved one.
-        if (current && current !== lastStatusText) {
+        // Prefer the last saved real status. Only adopt the live status if it
+        // is not something the plugin itself wrote (lyrics, Pause - title,
+        // loading / no-lyrics texts), otherwise a leftover plugin status
+        // would be remembered forever.
+        if (saved && !isPluginGeneratedStatus(saved)) {
+            previousStatusText = saved;
+        }
+        if (!previousStatusText && current && !isPluginGeneratedStatus(current) && current !== lastStatusText) {
             previousStatusText = current;
-        } else if (cleanText(saved)) {
-            previousStatusText = cleanText(saved);
+        }
+        if (!previousStatusText && getFallbackStatus()) {
+            previousStatusText = getFallbackStatus();
         }
         if (previousStatusText) {
             await DataStore.set(PREVIOUS_STATUS_KEY, previousStatusText);
@@ -879,8 +910,8 @@ function rememberPreviousStatus() {
         if (!current) return;
         if (current === lastStatusText) return;
         if (current === pendingRemoteStatusText) return;
-        if (isWaitingStatus(current)) return;
         if (current === previousStatusText) return;
+        if (isPluginGeneratedStatus(current)) return;
         previousStatusText = current;
         void DataStore.set(PREVIOUS_STATUS_KEY, previousStatusText).catch(() => void 0);
         debugLog(`previous status remembered "${previousStatusText}"`);
@@ -890,7 +921,7 @@ function rememberPreviousStatus() {
 }
 
 function restorePreviousStatus() {
-    setProfileStatus(previousStatusText || "");
+    setProfileStatus(previousStatusText || getFallbackStatus() || "");
 }
 
 function setLyricSendEnabled(enabled: boolean, channelId?: string) {
