@@ -221,6 +221,9 @@ let previousStatusText = "";
 let lyricSendEnabled = false;
 let lyricSendChannelId = "";
 let lastSentLyricId = "";
+let restoredPauseKey = "";
+let restoredStopKey = "";
+let restoredDisabled = false;
 
 const STATUS_SOCKET_ID = "SpotifyLyricsStatus";
 const RPC_SOCKET_ID = "SpotifyLyricsStatusRpc";
@@ -932,6 +935,36 @@ function rememberPreviousStatus() {
 
 function restorePreviousStatus() {
     setProfileStatus(previousStatusText || getFallbackStatus() || "");
+}
+
+// One-shot restores: restore once per pause/stop/disabled episode, then leave
+// the user's status alone so manual changes are not fought over.
+function restorePreviousStatusOnce(key: string, getKey: () => string, setKey: (value: string) => void) {
+    const want = previousStatusText || getFallbackStatus() || "";
+    const id = `${key}:${want}`;
+    if (getKey() === id) return;
+    setKey(id);
+    setProfileStatus(want);
+}
+
+function restoreOnPauseOnce() {
+    restorePreviousStatusOnce("pause", () => restoredPauseKey, value => { restoredPauseKey = value; });
+}
+
+function restoreOnStopOnce() {
+    restorePreviousStatusOnce("stop", () => restoredStopKey, value => { restoredStopKey = value; });
+}
+
+function restoreOnDisabledOnce() {
+    if (restoredDisabled) return;
+    restoredDisabled = true;
+    restorePreviousStatus();
+}
+
+function resetRestoreOnceFlags() {
+    restoredPauseKey = "";
+    restoredStopKey = "";
+    restoredDisabled = false;
 }
 
 function setLyricSendEnabled(enabled: boolean, channelId?: string) {
@@ -1912,10 +1945,16 @@ function tick() {
     const track = getCurrentTrack();
 
     if (!isStatusEnabled()) {
-        // Chat-only mode: never write the custom status. Restore once if the
-        // plugin had previously set a lyric status, then only send lyrics.
-        if (lastStatusText) {
-            restorePreviousStatus();
+        // Chat-only mode: never write the custom status, except for a single
+        // restore right after disabling (or starting disabled with a known
+        // status to restore). After that manual changes are left alone.
+        // Only adopt the live status when the plugin wrote something before,
+        // so a stale lyric from another session is never adopted.
+        if (lastStatusText) rememberPreviousStatus();
+        if (lastStatusText || previousStatusText || getFallbackStatus()) {
+            restoreOnDisabledOnce();
+        } else {
+            restoredDisabled = true;
         }
         if (track?.isPlaying) {
             lastPlaybackPlaying = true;
@@ -1934,6 +1973,8 @@ function tick() {
         return;
     }
 
+    restoredDisabled = false;
+
     if (!track) {
         lastPlaybackPlaying = undefined;
         if (!windowsSpotifyProcessRunning && Date.now() - windowsSpotifyProcessSeenAt > WINDOWS_SPOTIFY_PROCESS_GRACE_MS) {
@@ -1943,9 +1984,11 @@ function tick() {
             lastKnownSpotifyTrack = undefined;
             lastKnownSpotifyTrackAt = 0;
         }
+        restoredPauseKey = "";
         if (shouldRestoreOnStop()) {
-            restorePreviousStatus();
+            restoreOnStopOnce();
         } else {
+            restoredStopKey = "";
             setProfileStatus("");
         }
         clearRpc();
@@ -1954,9 +1997,11 @@ function tick() {
 
     if (!track.isPlaying) {
         lastPlaybackPlaying = false;
+        restoredStopKey = "";
         if (shouldRestoreOnPause()) {
-            restorePreviousStatus();
+            restoreOnPauseOnce();
         } else {
+            restoredPauseKey = "";
             const pausedText = `${settings.store.pausedPrefix}${track.title}`;
             setProfileStatus(formatStatus(pausedText, false));
         }
@@ -1964,6 +2009,8 @@ function tick() {
         return;
     }
 
+    restoredPauseKey = "";
+    restoredStopKey = "";
     rememberPreviousStatus();
 
     const resumedFromPause = lastPlaybackPlaying === false;
@@ -2063,6 +2110,7 @@ export default definePlugin({
         window.addEventListener("pagehide", clearStatusForShutdown);
         restartTimer();
         logStatusUserSettings();
+        resetRestoreOnceFlags();
         rememberPreviousStatus();
         void loadPreviousStatus();
         if (isStatusEnabled()) {
@@ -2099,6 +2147,7 @@ export default definePlugin({
         loadingTrackKey = "";
         lastPlaybackPlaying = undefined;
         setLyricSendEnabled(false);
+        resetRestoreOnceFlags();
         if (!isStatusEnabled()) {
             clearRpc();
         } else if (shouldRestoreOnStop() && (previousStatusText || getFallbackStatus())) {
