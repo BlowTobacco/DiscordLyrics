@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS = {
     rpcShowAlbumArt: true,
     restoreOnPause: true,
     restoreOnStop: true,
+    enableStatus: true,
     fallbackStatus: "",
     enableLyricSendButton: true
 } as const;
@@ -644,6 +645,11 @@ const settings = definePluginSettings({
         description: "Status to restore when paused/stopped if no previous status was saved. E.g. 15.",
         default: DEFAULT_SETTINGS.fallbackStatus
     },
+    enableStatus: {
+        type: OptionType.BOOLEAN,
+        description: "Update your custom status with lyrics. Turn off to use only the chat lyric sender.",
+        default: DEFAULT_SETTINGS.enableStatus
+    },
     enableLyricSendButton: {
         type: OptionType.BOOLEAN,
         description: "Show a chat bar button to send synced lyric lines as messages. Toggle it to start/stop.",
@@ -855,6 +861,10 @@ function getCurrentCustomStatusText() {
 
 function shouldRestoreOnPause() {
     return (settings.store as Record<string, unknown>).restoreOnPause !== false;
+}
+
+function isStatusEnabled() {
+    return (settings.store as Record<string, unknown>).enableStatus !== false;
 }
 
 function shouldRestoreOnStop() {
@@ -1568,6 +1578,11 @@ function supportsSyncedLyrics(track: NormalizedTrack) {
 
 function clearProfileStatusForTrackChange() {
     lastStatusText = "";
+    if (!isStatusEnabled()) {
+        nextRemoteStatusAt = 0;
+        pendingRemoteStatusText = lastRemoteStatusText ?? "";
+        return;
+    }
     nextRemoteStatusAt = 0;
     setRemoteStatus("", true);
     FluxDispatcher.dispatch({
@@ -1896,6 +1911,29 @@ function tick() {
 
     const track = getCurrentTrack();
 
+    if (!isStatusEnabled()) {
+        // Chat-only mode: never write the custom status. Restore once if the
+        // plugin had previously set a lyric status, then only send lyrics.
+        if (lastStatusText) {
+            restorePreviousStatus();
+        }
+        if (track?.isPlaying) {
+            lastPlaybackPlaying = true;
+            const key = trackKey(track);
+            if (key !== lastTrackKey) prepareTrack(track);
+            updateRpc(track);
+            if (supportsSyncedLyrics(track)) {
+                const lyric = lyricAt(track.progressMs);
+                if (lyric) maybeSendLyric(track, lyric);
+            }
+        } else {
+            lastPlaybackPlaying = track ? false : undefined;
+            if (track) updateRpc(track, true);
+            else clearRpc();
+        }
+        return;
+    }
+
     if (!track) {
         lastPlaybackPlaying = undefined;
         if (!windowsSpotifyProcessRunning && Date.now() - windowsSpotifyProcessSeenAt > WINDOWS_SPOTIFY_PROCESS_GRACE_MS) {
@@ -1988,10 +2026,14 @@ function onSpotifyPlayerState(event: SpotifyStateEvent) {
 }
 
 function clearStatusForShutdown() {
+    if (!isStatusEnabled()) {
+        clearRpc();
+        return;
+    }
     pendingRemoteStatusText = "";
     lastStatusText = "";
-    if (shouldRestoreOnStop() && previousStatusText) {
-        setProfileStatus(previousStatusText);
+    if (shouldRestoreOnStop() && (previousStatusText || getFallbackStatus())) {
+        setProfileStatus(previousStatusText || getFallbackStatus());
     } else {
         setProfileStatus("");
     }
@@ -2023,7 +2065,9 @@ export default definePlugin({
         logStatusUserSettings();
         rememberPreviousStatus();
         void loadPreviousStatus();
-        setRemoteStatus("");
+        if (isStatusEnabled()) {
+            setRemoteStatus("");
+        }
         void pollSpotifyPlayer(true);
         void pollWindowsSpotifyState(true);
         window.setTimeout(() => void pollWindowsSpotifyState(true), 2000);
@@ -2055,10 +2099,12 @@ export default definePlugin({
         loadingTrackKey = "";
         lastPlaybackPlaying = undefined;
         setLyricSendEnabled(false);
-        if (shouldRestoreOnStop() && previousStatusText) {
+        if (!isStatusEnabled()) {
+            clearRpc();
+        } else if (shouldRestoreOnStop() && (previousStatusText || getFallbackStatus())) {
             pendingRemoteStatusText = "";
             lastStatusText = "";
-            setProfileStatus(previousStatusText);
+            setProfileStatus(previousStatusText || getFallbackStatus());
             void flushRemoteStatus();
             clearRpc();
         } else {
