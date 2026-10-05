@@ -5,10 +5,12 @@
  */
 
 import * as DataStore from "@api/DataStore";
+import { ChatBarButton, type ChatBarButtonFactory } from "@api/ChatButtons";
 import { definePluginSettings } from "@api/Settings";
 import { UserSettings } from "@api/UserSettings";
 import { SpotifyStore } from "@plugins/spotifyControls/SpotifyStore";
-import definePlugin, { OptionType, type PluginNative } from "@utils/types";
+import { sendMessage } from "@utils/discord";
+import definePlugin, { OptionType, type IconComponent, type PluginNative } from "@utils/types";
 import type { Activity } from "@vencord/discord-types";
 import { ActivityFlags, ActivityStatusDisplayType, ActivityType } from "@vencord/discord-types/enums";
 import { ApplicationAssetUtils, Button, ConfirmModal, FluxDispatcher, openModal, React, showToast, UserStore } from "@webpack/common";
@@ -29,7 +31,10 @@ const DEFAULT_SETTINGS = {
     enableRpc: true,
     rpcName: "Spotify",
     rpcShowWhenPaused: true,
-    rpcShowAlbumArt: true
+    rpcShowAlbumArt: true,
+    restoreOnPause: true,
+    restoreOnStop: true,
+    enableLyricSendButton: true
 } as const;
 
 const RELEASE_VERSION = "1.0.6";
@@ -38,6 +43,7 @@ const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest
 const LAST_UPDATE_CHECK_KEY = "DiscordLyrics.lastUpdateCheck";
 const LAST_UPDATE_VERSION_KEY = "DiscordLyrics.lastUpdateVersion";
 const AUTO_UPDATE_SESSION_KEY = "DiscordLyrics.autoUpdateCheckedAt";
+const PREVIOUS_STATUS_KEY = "DiscordLyrics.previousStatus";
 
 type FontStyleId =
     | "normal"
@@ -209,6 +215,10 @@ let spotifyPollInFlight = false;
 let lastPlaybackPlaying: boolean | undefined;
 let spotifyUnavailableAt = 0;
 let spotifyPollMutedUntil = 0;
+let previousStatusText = "";
+let lyricSendEnabled = false;
+let lyricSendChannelId = "";
+let lastSentLyricId = "";
 
 const STATUS_SOCKET_ID = "SpotifyLyricsStatus";
 const RPC_SOCKET_ID = "SpotifyLyricsStatusRpc";
@@ -616,6 +626,21 @@ const settings = definePluginSettings({
         description: "Show the song cover on Rich Presence.",
         default: DEFAULT_SETTINGS.rpcShowAlbumArt
     },
+    restoreOnPause: {
+        type: OptionType.BOOLEAN,
+        description: "Restore your previous status when Spotify is paused instead of showing Pause - title.",
+        default: DEFAULT_SETTINGS.restoreOnPause
+    },
+    restoreOnStop: {
+        type: OptionType.BOOLEAN,
+        description: "Restore your previous status when Spotify is closed / no track instead of clearing.",
+        default: DEFAULT_SETTINGS.restoreOnStop
+    },
+    enableLyricSendButton: {
+        type: OptionType.BOOLEAN,
+        description: "Show a chat bar button to send synced lyric lines as messages. Toggle it to start/stop.",
+        default: DEFAULT_SETTINGS.enableLyricSendButton
+    },
     resetToDefaults: {
         type: OptionType.COMPONENT,
         component: () => React.createElement(Button, {
@@ -819,6 +844,112 @@ function getCurrentCustomStatusText() {
         return "";
     }
 }
+
+function shouldRestoreOnPause() {
+    return (settings.store as Record<string, unknown>).restoreOnPause !== false;
+}
+
+function shouldRestoreOnStop() {
+    return (settings.store as Record<string, unknown>).restoreOnStop !== false;
+}
+
+async function loadPreviousStatus() {
+    try {
+        const saved = await DataStore.get<string>(PREVIOUS_STATUS_KEY);
+        const current = getCurrentCustomStatusText();
+        // If the user has a real status right now (e.g. "15"), keep it.
+        // Otherwise fall back to the last saved one.
+        if (current && current !== lastStatusText) {
+            previousStatusText = current;
+        } else if (cleanText(saved)) {
+            previousStatusText = cleanText(saved);
+        }
+        if (previousStatusText) {
+            await DataStore.set(PREVIOUS_STATUS_KEY, previousStatusText);
+        }
+        debugLog(`previous status loaded "${previousStatusText}"`);
+    } catch (error) {
+        debugLog(`previous status load failed ${stringifyError(error)}`);
+    }
+}
+
+function rememberPreviousStatus() {
+    try {
+        const current = getCurrentCustomStatusText();
+        if (!current) return;
+        if (current === lastStatusText) return;
+        if (current === pendingRemoteStatusText) return;
+        if (isWaitingStatus(current)) return;
+        if (current === previousStatusText) return;
+        previousStatusText = current;
+        void DataStore.set(PREVIOUS_STATUS_KEY, previousStatusText).catch(() => void 0);
+        debugLog(`previous status remembered "${previousStatusText}"`);
+    } catch {
+        // ignore
+    }
+}
+
+function restorePreviousStatus() {
+    setProfileStatus(previousStatusText || "");
+}
+
+function setLyricSendEnabled(enabled: boolean, channelId?: string) {
+    lyricSendEnabled = enabled;
+    if (enabled) {
+        lyricSendChannelId = channelId ?? "";
+        lastSentLyricId = "";
+    } else {
+        lyricSendChannelId = "";
+    }
+}
+
+function maybeSendLyric(track: NormalizedTrack, lyric: ActiveLyricLine) {
+    if (!lyricSendEnabled || !lyricSendChannelId) return;
+    if (!track.isPlaying) return;
+    const id = `${trackKey(track)}|${lyric.timeMs}`;
+    if (id === lastSentLyricId) return;
+    lastSentLyricId = id;
+    const text = cleanText(lyric.text);
+    if (!text) return;
+    try {
+        sendMessage(lyricSendChannelId, { content: text });
+        debugLog(`lyric sent "${text}"`);
+    } catch (error) {
+        debugLog(`lyric send failed ${stringifyError(error)}`);
+    }
+}
+
+const LyricSendIcon: IconComponent = ({ height = 20, width = 20, className }) => {
+    return React.createElement("svg", {
+        width: width,
+        height: height,
+        viewBox: "0 0 24 24",
+        className,
+        style: { scale: "1.2" }
+    }, React.createElement("path", {
+        fill: "currentColor",
+        d: "M9 18V6l10-2v11.5a2.5 2.5 0 1 1-2-2.45V7.41L11 9.11V18a2.5 2.5 0 1 1-2-2.45V18Z"
+    }));
+};
+
+const LyricSendButton: ChatBarButtonFactory = ({ channel, isMainChat }) => {
+    const [enabled, setEnabled] = React.useState(lyricSendEnabled);
+    if (!isMainChat) return null;
+    if ((settings.store as Record<string, unknown>).enableLyricSendButton === false) return null;
+
+    return React.createElement(ChatBarButton, {
+        tooltip: enabled ? "Stop sending lyrics to chat" : "Send synced lyrics to chat",
+        onClick: () => {
+            const next = !lyricSendEnabled;
+            setLyricSendEnabled(next, channel?.id);
+            setEnabled(next);
+            showToast(next ? "Lyric send started" : "Lyric send stopped", next ? "success" : "message");
+        },
+        children: React.createElement("span", {
+            style: enabled ? { color: "var(--status-positive)" } : undefined
+        }, React.createElement(LyricSendIcon, {}))
+    });
+};
 
 function forceRemoteStatus(status: string, reason: string) {
     if (!status || isWaitingStatus(status)) return;
@@ -1422,6 +1553,7 @@ function prepareTrack(track: NormalizedTrack) {
     debugLog(`track change "${track.title}"`);
     lastTrackKey = key;
     lyrics = [];
+    lastSentLyricId = "";
     clearProfileStatusForTrackChange();
 
     if (supportsSyncedLyrics(track)) {
@@ -1742,18 +1874,28 @@ function tick() {
             lastKnownSpotifyTrack = undefined;
             lastKnownSpotifyTrackAt = 0;
         }
-        setProfileStatus("");
+        if (shouldRestoreOnStop()) {
+            restorePreviousStatus();
+        } else {
+            setProfileStatus("");
+        }
         clearRpc();
         return;
     }
 
     if (!track.isPlaying) {
         lastPlaybackPlaying = false;
-        const pausedText = `${settings.store.pausedPrefix}${track.title}`;
-        setProfileStatus(formatStatus(pausedText, false));
+        if (shouldRestoreOnPause()) {
+            restorePreviousStatus();
+        } else {
+            const pausedText = `${settings.store.pausedPrefix}${track.title}`;
+            setProfileStatus(formatStatus(pausedText, false));
+        }
         updateRpc(track, true);
         return;
     }
+
+    rememberPreviousStatus();
 
     const resumedFromPause = lastPlaybackPlaying === false;
     lastPlaybackPlaying = true;
@@ -1770,6 +1912,7 @@ function tick() {
 
     const lyric = lyricAt(track.progressMs);
     if (lyric) {
+        maybeSendLyric(track, lyric);
         setProfileStatus(lyricPageForStatus(lyric, track.progressMs));
         return;
     }
@@ -1816,7 +1959,11 @@ function onSpotifyPlayerState(event: SpotifyStateEvent) {
 function clearStatusForShutdown() {
     pendingRemoteStatusText = "";
     lastStatusText = "";
-    setProfileStatus("");
+    if (shouldRestoreOnStop() && previousStatusText) {
+        setProfileStatus(previousStatusText);
+    } else {
+        setProfileStatus("");
+    }
     void flushRemoteStatus();
     clearRpc();
 }
@@ -1831,6 +1978,10 @@ export default definePlugin({
     dependencies: ["SpotifyControls", "UserSettingsAPI"],
     settings,
     settingsAboutComponent: UpdateSettingsControl,
+    chatBarButton: {
+        icon: LyricSendIcon,
+        render: LyricSendButton
+    },
 
     start() {
         updatePluginAuthor();
@@ -1839,6 +1990,8 @@ export default definePlugin({
         window.addEventListener("pagehide", clearStatusForShutdown);
         restartTimer();
         logStatusUserSettings();
+        rememberPreviousStatus();
+        void loadPreviousStatus();
         setRemoteStatus("");
         void pollSpotifyPlayer(true);
         void pollWindowsSpotifyState(true);
@@ -1870,6 +2023,15 @@ export default definePlugin({
         lastTrackKey = "";
         loadingTrackKey = "";
         lastPlaybackPlaying = undefined;
-        clearStatusForShutdown();
+        setLyricSendEnabled(false);
+        if (shouldRestoreOnStop() && previousStatusText) {
+            pendingRemoteStatusText = "";
+            lastStatusText = "";
+            setProfileStatus(previousStatusText);
+            void flushRemoteStatus();
+            clearRpc();
+        } else {
+            clearStatusForShutdown();
+        }
     }
 });
