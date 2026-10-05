@@ -11,7 +11,7 @@ import { SpotifyStore } from "@plugins/spotifyControls/SpotifyStore";
 import definePlugin, { OptionType, type PluginNative } from "@utils/types";
 import type { Activity } from "@vencord/discord-types";
 import { ActivityFlags, ActivityStatusDisplayType, ActivityType } from "@vencord/discord-types/enums";
-import { ApplicationAssetUtils, Button, ConfirmModal, FluxDispatcher, openModal, React, showToast, Toasts, UserStore } from "@webpack/common";
+import { ApplicationAssetUtils, Button, ConfirmModal, FluxDispatcher, openModal, React, showToast, UserStore } from "@webpack/common";
 
 const Native = (VencordNative.pluginHelpers.DiscordLyrics ?? VencordNative.pluginHelpers.SpotifyLyricsStatus) as PluginNative<typeof import("./native")>;
 
@@ -273,7 +273,7 @@ function resetPluginDefaults() {
 
     restartTimer();
     tick();
-    showToast("DiscordLyrics settings reset", Toasts.Type.SUCCESS);
+    showToast("DiscordLyrics settings reset", "success");
 }
 
 interface GithubRelease {
@@ -325,7 +325,7 @@ async function checkForDiscordLyricsUpdate(options: { silentIfCurrent?: boolean;
         if (latest) await DataStore.set(LAST_UPDATE_VERSION_KEY, latest);
 
         if (!latest || compareVersions(latest, RELEASE_VERSION) <= 0) {
-            if (!options.silentIfCurrent) showToast("DiscordLyrics is up to date", Toasts.Type.SUCCESS);
+            if (!options.silentIfCurrent) showToast("DiscordLyrics is up to date", "success");
             return { latest: latest || RELEASE_VERSION, checkedAt };
         }
 
@@ -335,7 +335,7 @@ async function checkForDiscordLyricsUpdate(options: { silentIfCurrent?: boolean;
         return { latest, checkedAt };
     } catch (error) {
         debugLog(`update check failed ${stringifyError(error)}`);
-        if (!options.silentIfCurrent) showToast("DiscordLyrics update check failed", Toasts.Type.FAILURE);
+        if (!options.silentIfCurrent) showToast("DiscordLyrics update check failed", "failure");
         return { latest: "", checkedAt };
     }
 }
@@ -443,10 +443,10 @@ function showUpdateFoundModal(version: string, release: GithubRelease) {
         cancelText: "Later",
         variant: "primary",
         onConfirm: () => {
-            showToast("DiscordLyrics update started", Toasts.Type.MESSAGE);
+            showToast("DiscordLyrics update started", "message");
             void Native.installUpdate(version, release.body || "").catch(error => {
                 debugLog(`update install failed ${stringifyError(error)}`);
-                showToast("DiscordLyrics update could not start", Toasts.Type.FAILURE);
+                showToast("DiscordLyrics update could not start", "failure");
             });
         },
         onCancel: () => void 0
@@ -1847,7 +1847,7 @@ export default definePlugin({
         window.setTimeout(() => void showPendingUpdateNotice(), 2500);
         window.setTimeout(() => void checkForDiscordLyricsUpdateOnStartup(), 7000);
         tick();
-        showToast("DiscordLyrics started", Toasts.Type.SUCCESS);
+        showToast("DiscordLyrics started", "success");
     },
 
     stop() {
