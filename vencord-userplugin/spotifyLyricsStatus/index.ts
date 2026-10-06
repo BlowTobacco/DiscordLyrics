@@ -35,6 +35,7 @@ const DEFAULT_SETTINGS = {
     restoreOnPause: true,
     restoreOnStop: true,
     enableStatus: true,
+    filterSlurs: true,
     fallbackStatus: "",
     enableLyricSendButton: true
 } as const;
@@ -653,6 +654,11 @@ const settings = definePluginSettings({
         description: "Update your custom status with lyrics. Turn off to use only the chat lyric sender.",
         default: DEFAULT_SETTINGS.enableStatus
     },
+    filterSlurs: {
+        type: OptionType.BOOLEAN,
+        description: "Mask the n-word and common evasions in lyric statuses and sent messages.",
+        default: DEFAULT_SETTINGS.filterSlurs
+    },
     enableLyricSendButton: {
         type: OptionType.BOOLEAN,
         description: "Show a chat bar button to send synced lyric lines as messages. Toggle it to start/stop.",
@@ -680,6 +686,49 @@ function cleanDescription(value: unknown) {
         .replace(/&#39;/g, "'")
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">"));
+}
+
+const LEET_SLUR_MAP: Record<string, string> = {
+    "0": "o", "1": "i", "2": "z", "3": "e", "4": "a", "5": "s",
+    "6": "g", "7": "t", "8": "b", "9": "g",
+    "@": "a", "$": "s", "!": "i", "|": "i", "+": "t", "q": "g"
+};
+
+// Matches the n-word with hard-r / -a endings, plurals, repeated letters,
+// leet-speak and punctuation evasions. Single-g "niger" (Niger) intentionally
+// does not match.
+const SLUR_WORD_RE = /^n+i+(?:g{2,}[eo]*r+s*z*|g+a+r*s*z*|g{2,}lets?|g+)$/;
+
+function normalizeSlurWord(token: string) {
+    return [...token.toLowerCase()]
+        .map(char => LEET_SLUR_MAP[char] ?? char)
+        .join("")
+        .replace(/[^a-z]/g, "");
+}
+
+function isSlurWord(token: string) {
+    const word = normalizeSlurWord(token);
+    if (!word) return false;
+    return SLUR_WORD_RE.test(word);
+}
+
+function shouldFilterSlurs() {
+    return (settings.store as Record<string, unknown>).filterSlurs !== false;
+}
+
+function maskSlurs(text: string) {
+    if (!shouldFilterSlurs()) return text;
+    const value = String(text ?? "");
+    // Catch spaced-out evasions ("n i g g a"): only runs that collapse into
+    // the slur are masked, innocent letter runs are left untouched.
+    const joined = value.replace(/\b[A-Za-z0-9](?:\s+[A-Za-z0-9]){2,}\b/g, run => {
+        const collapsed = run.replace(/\s+/g, "");
+        return isSlurWord(collapsed) ? run.replace(/[A-Za-z0-9]/g, "*") : run;
+    });
+    return joined
+        .split(/(\s+)/)
+        .map(part => (/^\s+$/.test(part) || !part ? part : (isSlurWord(part) ? "*".repeat([...part].length) : part)))
+        .join("");
 }
 
 function getStoredNumber(key: keyof typeof DEFAULT_SETTINGS, fallback: number) {
@@ -833,7 +882,8 @@ function applyFontStyle(value: string) {
 }
 
 function formatStatus(value: string, styled = true) {
-    return truncateStatus(styled ? applyFontStyle(value) : value);
+    const masked = maskSlurs(value);
+    return truncateStatus(styled ? applyFontStyle(masked) : masked);
 }
 
 function getTickMs() {
@@ -983,8 +1033,8 @@ function maybeSendLyric(track: NormalizedTrack, lyric: ActiveLyricLine) {
     const id = `${trackKey(track)}|${lyric.timeMs}`;
     if (id === lastSentLyricId) return;
     lastSentLyricId = id;
-    const text = cleanText(lyric.text);
-    if (!text) return;
+    const text = maskSlurs(cleanText(lyric.text));
+    if (!text || !cleanText(text.replace(/\*/g, ""))) return;
     try {
         sendMessage(lyricSendChannelId, { content: text });
         debugLog(`lyric sent "${text}"`);
