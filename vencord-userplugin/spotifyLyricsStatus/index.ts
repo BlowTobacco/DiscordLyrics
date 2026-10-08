@@ -1017,14 +1017,30 @@ function resetRestoreOnceFlags() {
     restoredDisabled = false;
 }
 
+let lyricSendFailedToastShown = false;
+
 function setLyricSendEnabled(enabled: boolean, channelId?: string) {
     lyricSendEnabled = enabled;
     if (enabled) {
         lyricSendChannelId = channelId ?? "";
         lastSentLyricId = "";
+        lyricSendFailedToastShown = false;
     } else {
         lyricSendChannelId = "";
     }
+}
+
+function describeLyricSendState() {
+    const track = getCurrentTrack();
+    if (!track) return "No Spotify track found";
+    if (!track.isPlaying) return "Spotify is paused — resume to send lyrics";
+    if (!supportsSyncedLyrics(track)) return "This Spotify content has no synced lyrics";
+    if (!lyrics.length) {
+        return loadingTrackKey === trackKey(track)
+            ? "Waiting for synced lyrics…"
+            : "No synced lyrics found for this song";
+    }
+    return "";
 }
 
 function maybeSendLyric(track: NormalizedTrack, lyric: ActiveLyricLine) {
@@ -1040,6 +1056,10 @@ function maybeSendLyric(track: NormalizedTrack, lyric: ActiveLyricLine) {
         debugLog(`lyric sent "${text}"`);
     } catch (error) {
         debugLog(`lyric send failed ${stringifyError(error)}`);
+        if (!lyricSendFailedToastShown) {
+            lyricSendFailedToastShown = true;
+            showToast("Lyric send failed — check channel permissions", "failure");
+        }
     }
 }
 
@@ -1067,7 +1087,12 @@ const LyricSendButton: ChatBarButtonFactory = ({ channel, isMainChat }) => {
             const next = !lyricSendEnabled;
             setLyricSendEnabled(next, channel?.id);
             setEnabled(next);
-            showToast(next ? "Lyric send started" : "Lyric send stopped", next ? "success" : "message");
+            if (!next) {
+                showToast("Lyric send stopped", "message");
+            } else {
+                const state = describeLyricSendState();
+                showToast(state || "Lyric send started", state ? "failure" : "success");
+            }
         },
         children: React.createElement("span", {
             style: enabled ? { color: "var(--status-positive)" } : undefined
