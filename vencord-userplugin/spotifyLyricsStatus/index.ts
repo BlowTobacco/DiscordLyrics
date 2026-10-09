@@ -594,6 +594,13 @@ const settings = definePluginSettings({
         description: "Show dots during intros and long lyric gaps.",
         default: DEFAULT_SETTINGS.showWaitingDots
     },
+    lyricOffsetMs: {
+        type: OptionType.SLIDER,
+        description: "Sync adjust in ms. Lyrics show too early? Lower it. Too late? Raise it.",
+        markers: [-2000, -1000, -500, 0, 650, 1000, 2000, 3000],
+        stickToMarkers: false,
+        default: DEFAULT_SETTINGS.lyricOffsetMs
+    },
     loadingText: {
         type: OptionType.STRING,
         description: "Text shown while lyrics load.",
