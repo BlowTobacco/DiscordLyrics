@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Vencord, a Discord client mod
  * Copyright (c) 2026 mally
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -291,7 +291,7 @@ function resetPluginDefaults() {
 
     restartTimer();
     tick();
-    showToast("DiscordLyrics settings reset", "success");
+    showToast({ text: "DiscordLyrics settings reset", variant: "success" });
 }
 
 interface GithubRelease {
@@ -343,7 +343,7 @@ async function checkForDiscordLyricsUpdate(options: { silentIfCurrent?: boolean;
         if (latest) await DataStore.set(LAST_UPDATE_VERSION_KEY, latest);
 
         if (!latest || compareVersions(latest, RELEASE_VERSION) <= 0) {
-            if (!options.silentIfCurrent) showToast("DiscordLyrics is up to date", "success");
+            if (!options.silentIfCurrent) showToast({ text: "DiscordLyrics is up to date", variant: "success" });
             return { latest: latest || RELEASE_VERSION, checkedAt };
         }
 
@@ -353,7 +353,7 @@ async function checkForDiscordLyricsUpdate(options: { silentIfCurrent?: boolean;
         return { latest, checkedAt };
     } catch (error) {
         debugLog(`update check failed ${stringifyError(error)}`);
-        if (!options.silentIfCurrent) showToast("DiscordLyrics update check failed", "failure");
+        if (!options.silentIfCurrent) showToast({ text: "DiscordLyrics update check failed", variant: "critical" });
         return { latest: "", checkedAt };
     }
 }
@@ -461,10 +461,10 @@ function showUpdateFoundModal(version: string, release: GithubRelease) {
         cancelText: "Later",
         variant: "primary",
         onConfirm: () => {
-            showToast("DiscordLyrics update started", "message");
+            showToast({ text: "DiscordLyrics update started", variant: "default" });
             void Native.installUpdate(version, release.body || "").catch(error => {
                 debugLog(`update install failed ${stringifyError(error)}`);
-                showToast("DiscordLyrics update could not start", "failure");
+                showToast({ text: "DiscordLyrics update could not start", variant: "critical" });
             });
         },
         onCancel: () => void 0
@@ -1040,11 +1040,11 @@ function setLyricSendEnabled(enabled: boolean, channelId?: string) {
 function describeLyricSendState() {
     const track = getCurrentTrack();
     if (!track) return "No Spotify track found";
-    if (!track.isPlaying) return "Spotify is paused — resume to send lyrics";
+    if (!track.isPlaying) return "Spotify is paused â€” resume to send lyrics";
     if (!supportsSyncedLyrics(track)) return "This Spotify content has no synced lyrics";
     if (!lyrics.length) {
         return loadingTrackKey === trackKey(track)
-            ? "Waiting for synced lyrics…"
+            ? "Waiting for synced lyricsâ€¦"
             : "No synced lyrics found for this song";
     }
     return "";
@@ -1065,7 +1065,7 @@ function maybeSendLyric(track: NormalizedTrack, lyric: ActiveLyricLine) {
         debugLog(`lyric send failed ${stringifyError(error)}`);
         if (!lyricSendFailedToastShown) {
             lyricSendFailedToastShown = true;
-            showToast("Lyric send failed — check channel permissions", "failure");
+            showToast({ text: "Lyric send failed â€” check channel permissions", variant: "critical" });
         }
     }
 }
@@ -1095,10 +1095,10 @@ const LyricSendButton: ChatBarButtonFactory = ({ channel, isMainChat }) => {
             setLyricSendEnabled(next, channel?.id);
             setEnabled(next);
             if (!next) {
-                showToast("Lyric send stopped", "message");
+                showToast({ text: "Lyric send stopped", variant: "default" });
             } else {
                 const state = describeLyricSendState();
-                showToast(state || "Lyric send started", state ? "failure" : "success");
+                showToast({ text: state || "Lyric send started", variant: state ? "critical" : "success" });
             }
         },
         children: React.createElement("span", {
@@ -2205,7 +2205,7 @@ export default definePlugin({
         window.setTimeout(() => void showPendingUpdateNotice(), 2500);
         window.setTimeout(() => void checkForDiscordLyricsUpdateOnStartup(), 7000);
         tick();
-        showToast("DiscordLyrics started", "success");
+        showToast({ text: "DiscordLyrics started", variant: "success" });
     },
 
     stop() {
@@ -2243,3 +2243,4 @@ export default definePlugin({
         }
     }
 });
+
