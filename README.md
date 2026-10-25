@@ -15,7 +15,7 @@
   <a href="https://github.com/BlowTobacco/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip"><img alt="Download full package" src="https://img.shields.io/badge/Download-Full_Package-101014?style=for-the-badge&labelColor=f4ead8&color=d7b981"></a>
 </p>
 
-> Forked from [MallyDev2/DiscordLyrics](https://github.com/MallyDev2/DiscordLyrics) by BlowTobacco — fixed for current Vencord plus status restore, lyric chat sender, slur filter, and a sync slider (see Fork changes below).
+> Forked from [MallyDev2/DiscordLyrics](https://github.com/MallyDev2/DiscordLyrics) by zzblow — fixed for current Vencord plus status restore, lyric chat sender, slur filter, and a sync slider (see Fork changes below).
 
 DiscordLyrics syncs Spotify lyrics from currently playing song to your custom status. By doing this it is a breach of discord tos for self botting so please use responsibly.
 
@@ -25,7 +25,7 @@ DiscordLyrics syncs Spotify lyrics from currently playing song to your custom st
 - LRCLIB synced lyric lookup.
 - Rate-conscious status updates.
 
-## Fork changes (BlowTobacco)
+## Fork changes (zzblow)
 
 - Fixed startup crash on current Vencord (`Toasts.Type` removal + new toast API).
 - **Restore previous status** on pause/stop/shutdown instead of `Pause - title` or clearing (`restoreOnPause`, `restoreOnStop`, `fallbackStatus`).
