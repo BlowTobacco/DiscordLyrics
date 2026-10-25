@@ -9,11 +9,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/MallyDev2/DiscordLyrics?style=for-the-badge&labelColor=101014&color=d7b981"></a>
-  <a href="https://github.com/MallyDev2/DiscordLyrics/actions"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/MallyDev2/DiscordLyrics/ci.yml?style=for-the-badge&label=build&labelColor=101014&color=9ec7ff"></a>
-  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.exe"><img alt="Windows installer" src="https://img.shields.io/badge/Auto_Install-Windows-ffffff?style=for-the-badge&labelColor=101014&color=d7b981"></a>
-  <a href="https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip"><img alt="Download full package" src="https://img.shields.io/badge/Download-Full_Package-101014?style=for-the-badge&labelColor=f4ead8&color=d7b981"></a>
+  <a href="https://github.com/BlowTobacco/DiscordLyrics/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/BlowTobacco/DiscordLyrics?style=for-the-badge&labelColor=101014&color=d7b981"></a>
+  <a href="https://github.com/BlowTobacco/DiscordLyrics/actions"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/BlowTobacco/DiscordLyrics/ci.yml?style=for-the-badge&label=build&labelColor=101014&color=9ec7ff"></a>
+  <a href="https://github.com/BlowTobacco/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.exe"><img alt="Windows installer" src="https://img.shields.io/badge/Auto_Install-Windows-ffffff?style=for-the-badge&labelColor=101014&color=d7b981"></a>
+  <a href="https://github.com/BlowTobacco/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip"><img alt="Download full package" src="https://img.shields.io/badge/Download-Full_Package-101014?style=for-the-badge&labelColor=f4ead8&color=d7b981"></a>
 </p>
+
+> Forked from [MallyDev2/DiscordLyrics](https://github.com/MallyDev2/DiscordLyrics) by BlowTobacco — fixed for current Vencord plus status restore, lyric chat sender, slur filter, and a sync slider (see Fork changes below).
 
 DiscordLyrics syncs Spotify lyrics from currently playing song to your custom status. By doing this it is a breach of discord tos for self botting so please use responsibly.
 
@@ -23,12 +25,22 @@ DiscordLyrics syncs Spotify lyrics from currently playing song to your custom st
 - LRCLIB synced lyric lookup.
 - Rate-conscious status updates.
 
+## Fork changes (BlowTobacco)
+
+- Fixed startup crash on current Vencord (`Toasts.Type` removal + new toast API).
+- **Restore previous status** on pause/stop/shutdown instead of `Pause - title` or clearing (`restoreOnPause`, `restoreOnStop`, `fallbackStatus`).
+- Restores fire once, so manual status changes stick.
+- **Lyric chat sender**: chat-bar music-note button sends each synced line as a chat message, locked to that channel, with state toasts (no track / paused / waiting / no lyrics).
+- **Enable Status** toggle for chat-only mode (never touches your status).
+- **Slur filter** masks the n-word and common evasions (leet, repeats, punctuation, spaced-out) in statuses and sent messages; fully-masked lines are skipped in chat.
+- **Sync offset slider** (`lyricOffsetMs`, -2000…3000 ms): lyrics early → lower it, late → raise it.
+
 ## Download
 
 | Client | Release file | Setup |
 | --- | --- | --- |
-| Auto installer | [DiscordLyrics-Installer.cmd](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.cmd) | Runs the Windows installer for BetterDiscord, Vencord, Equicord, or Dorian-style source clients. |
-| Complete package | [DiscordLyrics-release.zip](https://github.com/MallyDev2/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip) | Includes both client builds, README, license, and changelog. |
+| Auto installer | [DiscordLyrics-Installer.cmd](https://github.com/BlowTobacco/DiscordLyrics/releases/latest/download/DiscordLyrics-Installer.cmd) | Runs the Windows installer for BetterDiscord, Vencord, Equicord, or Dorian-style source clients. |
+| Complete package | [DiscordLyrics-release.zip](https://github.com/BlowTobacco/DiscordLyrics/releases/latest/download/DiscordLyrics-release.zip) | Includes both client builds, README, license, and changelog. |
 
 ## One-Click Windows Setup
 
