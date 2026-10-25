@@ -35,6 +35,12 @@ DiscordLyrics syncs Spotify lyrics from currently playing song to your custom st
 - **Slur filter** masks the n-word and common evasions (leet, repeats, punctuation, spaced-out) in statuses and sent messages; fully-masked lines are skipped in chat.
 - **Sync offset slider** (`lyricOffsetMs`, -2000…3000 ms): lyrics early → lower it, late → raise it.
 
+## Showcase
+
+Lyric chat sender in action — press the music-note button in any chat bar, each synced line sends itself, press again to stop:
+
+![Lyric chat sender showcase](assets/lyric-chat-showcase.png)
+
 ## Download
 
 | Client | Release file | Setup |
